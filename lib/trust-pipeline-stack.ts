@@ -161,8 +161,9 @@ export class TrustPipelineStack extends Stack {
     // If models live in another bucket, grant read here as well.
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 2048, //1024
-      memoryLimitMiB: 4096, //2048
+      cpu: 4096,             // 4 vCPU
+      memoryLimitMiB: 16384, // 16 GB RAM
+      ephemeralStorageGiB: 50, // optional, room for model cache/temp
       taskRole,
     });
     // Allow the execution role to pull from your ECR repo
