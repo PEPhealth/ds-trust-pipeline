@@ -1,34 +1,34 @@
 version: 0.2
 
 env:
-  variables:
-    AWS_REGION: us-east-2
-    ECR_REGISTRY: 977903982786.dkr.ecr.us-east-2.amazonaws.com
-    ECR_REPO: ds-trust-spancat
-    IMAGE_TAG: latest
-    IMAGE_TAG_SHA: $CODEBUILD_RESOLVED_SOURCE_VERSION
+variables:
+AWS_REGION: us-east-2
+ECR_REGISTRY: 977903982786.dkr.ecr.us-east-2.amazonaws.com
+ECR_REPO: ds-trust-spancat
+IMAGE_TAG: latest
+IMAGE_TAG_SHA: $CODEBUILD_RESOLVED_SOURCE_VERSION
 
 phases:
-  pre_build:
-    commands:
-      - echo "Logging in to Amazon ECR in $AWS_REGION..."
-      - aws --version
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-      - export DOCKER_CLIENT_TIMEOUT=900
-      - export COMPOSE_HTTP_TIMEOUT=900
-      - docker buildx create --use || true
-      - docker buildx inspect --bootstrap || true
+pre_build:
+commands:
+- echo "Logging in to Amazon ECR in $AWS_REGION..."
+- aws --version
+- aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+- export DOCKER_CLIENT_TIMEOUT=900
+- export COMPOSE_HTTP_TIMEOUT=900
+- docker buildx create --use || true
+- docker buildx inspect --bootstrap || true
 
-  build:
-    commands:
-      - |
-        echo "Building and pushing $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG and :$IMAGE_TAG_SHA"
-        docker buildx build --platform linux/amd64 \
-          -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" \
-          -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA" \
-          docker/spancat \
-          --push
+build:
+commands:
+- |
+echo "Building and pushing $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG and :$IMAGE_TAG_SHA"
+docker buildx build --platform linux/amd64 \
+-t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" \
+-t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA" \
+docker/spancat \
+--push
 
-  post_build:
-    commands:
-      - printf "Pushed tags: %s and %s\n" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA"
+post_build:
+commands:
+- printf "Pushed tags: %s and %s\n" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA"
