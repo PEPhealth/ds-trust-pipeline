@@ -1,8 +1,24 @@
-*.js
-!jest.config.js
-*.d.ts
-node_modules
+cat > .gitignore <<'EOF'
+# Node/CDK
+node_modules/
+cdk.out/
+*.tsbuildinfo
 
-# CDK asset staging directory
-.cdk.staging
-cdk.out
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Docker
+*.log
+
+# AWS local files
+*.env
+.env.*
+.aws/
+EOF

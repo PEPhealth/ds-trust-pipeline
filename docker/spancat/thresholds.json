@@ -1,0 +1,19 @@
+{
+  "Answering_Questions": 0.8,
+  "Addressing_Concerns": 0.9,
+  "Effective_Communication": 0.9,
+  "Gratitude": 0.5,
+  "Helpfulness": 0.4,
+  "Kindness_Caring_Compassion": 0.8,
+  "Patient_Retention": 0.8,
+  "Patients_Mood": 0.4,
+  "Recommendation": 0.5,
+  "Respect": 0.4,
+  "Stress_Management": 0.4,
+  "Attentiveness": 0.5,
+  "Care_and_Treatment": 0.5,
+  "Complaint": 0.8,
+  "Effective_Listening": 0.7,
+  "Treatment_Outcomes": 0.8,
+  "Trust_and_Confidence": 0.4
+}

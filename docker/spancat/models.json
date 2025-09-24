@@ -1,0 +1,70 @@
+{
+  "Effective_Communication": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Effective_Communication/baseline-model/transformer/model.tar.gz"
+  },
+  "Addressing_Concerns": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Addressing_Concerns/baseline-model/transformer/model.tar.gz"
+  },
+  "Answering_Questions": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Answering_Questions/baseline-model/transformer/model.tar.gz"
+  },
+  "Gratitude": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Gratitude/pipeline-train/transformer/model.tar.gz"
+  },
+  "Helpfulness": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Helpfulness/pipeline-train/transformer/model.tar.gz"
+  },
+  "Kindness_Caring_Compassion": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Kindness_Caring_Compassion/pipeline-train/transformer/model.tar.gz"
+  },
+  "Patient_Retention": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Patient_Retention/baseline-model/model.tar.gz"
+  },
+  "Patients_Mood": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Patients_Mood/pipeline-train/transformer/model.tar.gz"
+  },
+  "Recommendation": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Recommendation/pipeline-train/transformer/model.tar.gz"
+  },
+  "Respect": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Respect/pipeline-train/transformer/model.tar.gz"
+  },
+  "Stress_Management": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Stress_Management/pipeline-train/transformer/model.tar.gz"
+  },
+  "Attentiveness": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Attentiveness/pipeline-train/transformer/model.tar.gz"
+  },
+  "Care_and_Treatment": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Care_and_Treatment/pipeline-train/transformer/model.tar.gz"
+  },
+  "Complaint": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Complaint/pipeline-train/transformer/model.tar.gz"
+  },
+  "Effective_Listening": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Effective_Listening/pipeline-train/transformer/model.tar.gz"
+  },
+  "Treatment_Outcomes": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Treatment_Outcomes/pipeline-train/transformer/model.tar.gz"
+  },
+  "Trust_and_Confidence": {
+    "bucket": "aws-emr-studio-977903982786-us-east-1",
+    "key": "ECU-trust-subdomains/Trust_and_Confidence/pipeline-train/transformer/model.tar.gz"
+  }
+}

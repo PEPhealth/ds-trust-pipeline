@@ -1,0 +1,41 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: us-east-2
+    ECR_REGISTRY: 977903982786.dkr.ecr.us-east-2.amazonaws.com
+    ECR_REPO: ds-trust-spancat
+    # tag latest and by commit sha so you can pin either one
+    IMAGE_TAG: latest
+    IMAGE_TAG_SHA: $CODEBUILD_RESOLVED_SOURCE_VERSION
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws --version
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+      #helps large builds
+      - export DOCKER_CLIENT_TIMEOUT=600
+      - export COMPOSE_HTTP_TIMEOUT=600
+      - docker buildx create --use || true
+      - docker buildx inspect --bootstrap || true
+
+  build:
+    commands:
+      - echo "Building image (linux/amd64) from docker/spancat..."
+      - |
+        docker buildx build \
+          --platform linux/amd64 \
+          -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG \
+          -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA \
+          docker/spancat \
+          --push
+
+  post_build:
+    commands:
+      - echo "Pushed: $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG and :$IMAGE_TAG_SHA"
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: yes
