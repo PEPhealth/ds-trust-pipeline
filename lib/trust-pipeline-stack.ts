@@ -1,15 +1,16 @@
 import { Stack, StackProps, Duration, CfnOutput, RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as kms from 'aws-cdk-lib/aws-kms';
+//import * as kms from 'aws-cdk-lib/aws-kms';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+//import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
 //import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as lambdaPython from '@aws-cdk/aws-lambda-python-alpha';
+//import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
+//import * as lambdaPython from '@aws-cdk/aws-lambda-python-alpha';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -133,7 +134,7 @@ export class TrustPipelineStack extends Stack {
       '977903982786.dkr.ecr.us-east-2.amazonaws.com/ds-trust-spancat:latest'
     );
 
-    
+
     const taskRole = new iam.Role(this, 'FargateTaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
@@ -162,8 +163,11 @@ export class TrustPipelineStack extends Stack {
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 2048, //1024
       memoryLimitMiB: 4096, //2048
-      taskRole
+      taskRole,
     });
+    // Allow the execution role to pull from your ECR repo
+    const repo = ecr.Repository.fromRepositoryName(this, 'SpancatRepo', 'ds-trust-spancat');
+    repo.grantPull(taskDef.obtainExecutionRole());
 
     const container = taskDef.addContainer('spancat', {
       image: scorerImage,
@@ -186,10 +190,11 @@ export class TrustPipelineStack extends Stack {
 
 
     // ---- Export Lambda (Redshift Data API + UNLOAD) ----
-    const exportFn = new lambdaPython.PythonFunction(this, 'ExportFn', {
-      entry: 'lambda/export_redshift',
-      index: 'handler.py',
+        // ---- Export Lambda (Redshift Data API + UNLOAD) ----
+    const exportFn = new lambda.Function(this, 'ExportFn', {
       runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset('lambda/export_redshift'), // directory with handler.py
       timeout: Duration.minutes(5),
       environment: {
         PARAM_SQL: pSql.parameterName,
@@ -197,11 +202,11 @@ export class TrustPipelineStack extends Stack {
         PARAM_UNLOAD_ROLE: pUnloadRole.parameterName,
         PARAM_RS_WORKGROUP: pWorkgroup.parameterName,
         PARAM_RS_DATABASE: pDatabase.parameterName,
-        //PARAM_RS_REGION: pRsRegion.parameterName,  
-        RS_REGION: Stack.of(this).region, 
-        UNLOAD_ROLE_ARN: unloadRole.roleArn,
+        RS_REGION: Stack.of(this).region,
         DB_SECRET_ARN: dbSecret.secretArn,
-      }
+        // DB_SECRET_ARN if you use Secrets Manager auth:
+        // DB_SECRET_ARN: 'arn:aws:secretsmanager:us-east-2:977903982786:secret:redshift-access-creds-us-east-2'
+      },
     });
 
     // Let the Export Lambda read the secret
@@ -242,20 +247,21 @@ export class TrustPipelineStack extends Stack {
     dataBucket.grantReadWrite(exportFn); // for list/verify
 
     // ---- Notify Lambda ----
-    const notifyFn = new lambdaPython.PythonFunction(this, 'NotifyFn', {
-      entry: 'lambda/notify',
-      index: 'handler.py',
+    const notifyFn = new lambda.Function(this, 'NotifyFn', {
       runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset('lambda/notify'), // directory with handler.py
       timeout: Duration.seconds(30),
       environment: {
         PARAM_SNS_TOPIC: pTopicArn.parameterName,
-        PARAM_DATA_BUCKET: pDataBucket.parameterName
-      }
+        PARAM_DATA_BUCKET: pDataBucket.parameterName,
+      },
     });
     notifyFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'], resources: [pTopicArn.parameterArn, pDataBucket.parameterArn]
     }));
     topic.grantPublish(notifyFn);
+   // ------
 
     // ---- Step Functions: Export -> Run Fargate -> Notify ----
     const runTask = new tasks.EcsRunTask(this, 'RunScorer', {
