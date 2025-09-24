@@ -2,11 +2,11 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION: us-east-2
-    ECR_REGISTRY: 977903982786.dkr.ecr.us-east-2.amazonaws.com
-    ECR_REPO: ds-trust-spancat
-    IMAGE_TAG: latest
-    IMAGE_TAG_SHA: $CODEBUILD_RESOLVED_SOURCE_VERSION
+    AWS_REGION: "us-east-2"
+    ECR_REGISTRY: "977903982786.dkr.ecr.us-east-2.amazonaws.com"
+    ECR_REPO: "ds-trust-spancat"
+    IMAGE_TAG: "latest"
+    IMAGE_TAG_SHA: "$CODEBUILD_RESOLVED_SOURCE_VERSION"
 
 phases:
   pre_build:
