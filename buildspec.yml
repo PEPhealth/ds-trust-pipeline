@@ -22,11 +22,7 @@ phases:
   build:
     commands:
       - echo "Building and pushing $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG and :$IMAGE_TAG_SHA"
-      - docker buildx build --platform linux/amd64 \
-          -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" \
-          -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA" \
-          docker/spancat \
-          --push
+      - docker buildx build --platform linux/amd64 -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" -t "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA" docker/spancat --push
 
   post_build:
     commands:
