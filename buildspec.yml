@@ -26,4 +26,4 @@ phases:
 
   post_build:
     commands:
-      - printf "Pushed tags: %s and %s\n" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA"
+      - printf "Pushed tags: s and %s\n" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" "$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG_SHA"
