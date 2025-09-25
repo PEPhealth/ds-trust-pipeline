@@ -162,7 +162,7 @@ export class TrustPipelineStack extends Stack {
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 4096,             // 4 vCPU
-      memoryLimitMiB: 16384, // 16 GB RAM
+      memoryLimitMiB: 32768, // 16 GB RAM 16384 didnt work, upped to 32gb
       ephemeralStorageGiB: 50, // optional, room for model cache/temp
       taskRole,
     });
