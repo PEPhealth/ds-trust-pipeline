@@ -1,6 +1,18 @@
-import os, json, tarfile, argparse, re
+import os
+import json
+import tarfile
+import argparse
+import re #ithink not needed
+import gc
+import tempfile
+
 import pandas as pd
-import s3fs, boto3, spacy
+
+import s3fs
+import boto3
+
+import spacy
+
 from datetime import datetime
 from typing import Dict, List, Tuple, Set
 
@@ -69,8 +81,9 @@ def download_and_extract_model(s3_bucket: str, s3_key: str, local_dir: str) -> s
 
 def load_models(model_map: Dict[str, Dict[str, str]]) -> List[Tuple[spacy.Language, str]]:
     """
+    (Kept for compatibility; not used in main anymore.)
     model_map: { label: {"bucket": "...", "key": "path/to/model.tar.gz"} }
-    Returns list of (nlp, label)
+    Returns list of (nlp, label) by loading ALL models (high memory).
     """
     pairs = []
     for label, loc in model_map.items():
@@ -85,6 +98,9 @@ def run_spancat_on_text(text: str,
                         models: List[Tuple[spacy.Language, str]],
                         thresholds: Dict[str, float],
                         exclusion: Set[str]) -> List[Dict]:
+    """
+    (Kept for compatibility; used when all models are preloaded.)
+    """
     matches = []
     for nlp, label in models:
         doc = nlp(text)
@@ -108,6 +124,9 @@ def process_table(df: pd.DataFrame,
                   models: List[Tuple[spacy.Language, str]],
                   thresholds: Dict[str, float],
                   exclusion: Set[str]) -> pd.DataFrame:
+    """
+    (Kept for compatibility; processes with ALL models resident in memory.)
+    """
     all_rows = []
     today = datetime.now().strftime("%Y-%m-%d")
     for idx, row in df.iterrows():
@@ -122,8 +141,74 @@ def process_table(df: pd.DataFrame,
                 out["pattern_check_date"] = today
                 all_rows.append(out)
         else:
-            # keep rows with no match? Set keep_no_match=False to skip
+            # keep rows with no match? set keep_no_match=False to skip
             pass
+    return pd.DataFrame(all_rows)
+
+# ---------- low-memory sequential pipeline ----------
+
+def _run_single_model_over_df(df: pd.DataFrame,
+                              text_col: str,
+                              nlp: spacy.Language,
+                              label: str,
+                              threshold: float,
+                              exclusion: Set[str]) -> List[Dict]:
+    rows = []
+    today = datetime.now().strftime("%Y-%m-%d")
+    for _, row in df.iterrows():
+        text = str(row[text_col]) if text_col in row and pd.notna(row[text_col]) else ""
+        if not text:
+            continue
+        doc = nlp(text)
+        hits = []
+        if "sc" in doc.spans and "scores" in doc.spans["sc"].attrs:
+            for span, score in zip(doc.spans["sc"], doc.spans["sc"].attrs["scores"]):
+                if score >= threshold and span.text.lower() not in exclusion:
+                    hits.append({
+                        "theme": label,
+                        "theme_text": span.text,
+                        "theme_start_char": span.start_char,
+                        "theme_end_char": span.end_char,
+                        "theme_start_token": span.start,
+                        "theme_end_token": span.end,
+                        "score": float(score),
+                        "relevant": 1,
+                        "pattern_check_date": today
+                    })
+        if hits:
+            base = row.to_dict()
+            for h in hits:
+                out = dict(base)
+                out.update(h)
+                rows.append(out)
+        # else: skip no-match rows (same behaviour as process_table)
+    return rows
+
+def process_table_sequential(df: pd.DataFrame,
+                             text_col: str,
+                             model_map: Dict[str, Dict[str, str]],
+                             thresholds: Dict[str, float],
+                             exclusion: Set[str]) -> pd.DataFrame:
+    """
+    Load models ONE AT A TIME, run over full df, free, repeat.
+    model_map: { label: {"bucket": "...", "key": "path/to/model.tar.gz"} }
+    """
+    all_rows: List[Dict] = []
+    for label, loc in model_map.items():
+        # download & load this model only
+        model_dir = download_and_extract_model(loc["bucket"], loc["key"],
+                                               local_dir=os.path.join(tempfile.gettempdir(), "models", label))
+        nlp = spacy.load(model_dir)
+        thr = float(thresholds.get(label, 0.5))
+        try:
+            all_rows.extend(_run_single_model_over_df(df, text_col, nlp, label, thr, exclusion))
+        finally:
+            # free memory aggressively between models
+            try:
+                del nlp
+            except Exception:
+                pass
+            gc.collect()
     return pd.DataFrame(all_rows)
 
 # ---------- main ----------
@@ -148,9 +233,14 @@ def main():
     with open(args.models_json, "r", encoding="utf-8") as f:
         model_map = json.load(f)
 
-    models = load_models(model_map)
+    # low-memory path - process models sequentially
     df = read_table(args.input)
-    out = process_table(df, args.text_col, models, thresholds, exclusion)
+    out = process_table_sequential(df, args.text_col, model_map, thresholds, exclusion)
+
+    #original all-in-memory behaviour - swap to:
+    # models = load_models(model_map)
+    # out = process_table(df, args.text_col, models, thresholds, exclusion)
+
     write_table(out, args.output)
     print(f"Done. Wrote {len(out)} rows to {args.output}")
 
