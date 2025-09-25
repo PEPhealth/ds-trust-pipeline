@@ -16,6 +16,8 @@ from run_filter_trust import (
     fix_different_subdomain_overlapping_spans,
 )
 
+import gc
+
 # ---------- I/O helpers ----------
 
 def _is_s3(p: str) -> bool:
@@ -78,6 +80,52 @@ def write_table(df: pd.DataFrame, path: str):
             raise ValueError(f"Unsupported extension: {ext}")
 
 # ---------- model loading (SpanCat) ----------
+def process_table_sequential(df: pd.DataFrame,
+                             text_col: str,
+                             model_map: Dict[str, Dict[str, str]],
+                             thresholds: Dict[str, float],
+                             exclusion: Set[str]) -> pd.DataFrame:
+    """Memory-friendly: load one model at a time, run over all rows, then free it."""
+    all_rows = []
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # pre-extract all model archives once (no memory cost, just disk)
+    local_paths = {}
+    for label, loc in model_map.items():
+        local_paths[label] = download_and_extract_model(loc["bucket"], loc["key"], f".cache/{label}")
+
+    texts = df[text_col].fillna("").astype(str).tolist()
+    bases = df.to_dict(orient="records")
+
+    for label, model_dir in local_paths.items():
+        th = thresholds.get(label, 0.5)
+        nlp = spacy.load(model_dir)
+        try:
+            for base, text in zip(bases, texts):
+                doc = nlp(text)
+                if "sc" in doc.spans and "scores" in doc.spans["sc"].attrs:
+                    for span, score in zip(doc.spans["sc"], doc.spans["sc"].attrs["scores"]):
+                        if float(score) >= th and span.text.lower() not in exclusion:
+                            out = dict(base)
+                            out.update({
+                                "theme": label,
+                                "theme_text": span.text,
+                                "theme_start_char": int(span.start_char),
+                                "theme_end_char": int(span.end_char),
+                                "theme_start_token": int(span.start),
+                                "theme_end_token": int(span.end),
+                                "score": float(score),
+                                "relevant": 1,
+                                "pattern_check_date": today,
+                            })
+                            all_rows.append(out)
+        finally:
+            # free RAM used by this model before moving to the next
+            del nlp
+            gc.collect()
+
+    return pd.DataFrame(all_rows)
+
 
 def load_exclusion_list(file_path: str) -> Set[str]:
     if not file_path or not os.path.exists(file_path):
@@ -183,6 +231,10 @@ def apply_filters_and_recommend(
     knn_path: str | None,
     le_path: str | None,
     embedding_model_name: str = "paraphrase-MiniLM-L6-v2",
+    *,                       # ← keyword-only after here
+    knn_obj=None,
+    le_obj=None,
+    emb_obj=None,
 ) -> pd.DataFrame:
     """
     - fix punctuation + emoji relevance
@@ -213,14 +265,16 @@ def apply_filters_and_recommend(
     spans_by_comment = fix_same_subdomain_overlapping_spans(spans_by_comment)
 
     # 3) different-subdomain overlap fix via KNN (optional)
-    knn, le, emb = None, None, None
-    if knn_path and le_path:
+    # 3) different-subdomain overlap fix via KNN (optional)
+    knn, le, emb = knn_obj, le_obj, emb_obj
+    if (knn is None or le is None or emb is None) and knn_path and le_path:
         try:
-            knn = joblib.load(knn_path)
-            le = joblib.load(le_path)
-            emb = SentenceTransformer(embedding_model_name)
+            knn = knn or joblib.load(knn_path)
+            le  = le  or joblib.load(le_path)
+            emb = emb or SentenceTransformer(embedding_model_name)
         except Exception as e:
             print(f"[warn] could not load KNN/LE/embedding model: {e}")
+            knn, le, emb = None, None, None
 
     if knn and le and emb:
         spans_by_comment = fix_different_subdomain_overlapping_spans(spans_by_comment, emb, knn, le)
@@ -291,7 +345,9 @@ def main():
     parser.add_argument("--label-encoder-path", default="./models/label_encoder.sav")
     parser.add_argument("--embedding-model-name", default="paraphrase-MiniLM-L6-v2")
     parser.add_argument("--skip-recommend", action="store_true", help="Skip recommend textcat & KNN fixes")
-
+    parser.add_argument("--load-mode", choices=["sequential","all"], default="sequential",
+                        help="Load models one-by-one (low memory) or all at once.")
+    
     args = parser.parse_args()
 
     exclusion = load_exclusion_list(args.exclusion_file)
@@ -300,9 +356,6 @@ def main():
         thresholds = json.load(f)
     with open(args.models_json, "r", encoding="utf-8") as f:
         model_map = json.load(f)
-
-    # Load SpanCat models
-    models = load_models(model_map)
 
     # Determine inputs
     inputs: List[str]
@@ -326,7 +379,7 @@ def main():
             print(f"[spancat] No input files found under prefix: {args.input_prefix}")
             return
 
-    # Prepare recommend assets (optional)
+    # Prepare recommend assets ONCE
     recommend_nlp = None
     if not args.skip_recommend:
         try:
@@ -336,12 +389,27 @@ def main():
             print(f"[warn] Could not load recommend model: {e}")
             recommend_nlp = None
 
+    # (optional) preload KNN/LE/emb once
+    knn_obj = le_obj = emb_obj = None
+    if not args.skip_recommend:
+        try:
+            if os.path.exists(args.knn_path) and os.path.exists(args.label_encoder_path):
+                knn_obj = joblib.load(args.knn_path)
+                le_obj  = joblib.load(args.label_encoder_path)
+                emb_obj = SentenceTransformer(args.embedding_model_name)
+        except Exception as e:
+            print(f"[warn] Could not preload KNN/LE/emb: {e}")
+
     # Process each input file
     for idx, in_path in enumerate(inputs, start=1):
         df_in = read_table(in_path)
-        scored = process_table(df_in, args.text_col, models, thresholds, exclusion)
 
-        # post-process + recommend
+        if args.load_mode == "all":
+            models = load_models(model_map)
+            scored = process_table(df_in, args.text_col, models, thresholds, exclusion)
+        else:
+            scored = process_table_sequential(df_in, args.text_col, model_map, thresholds, exclusion)
+
         if not scored.empty:
             scored = apply_filters_and_recommend(
                 spans_df=scored,
@@ -349,6 +417,7 @@ def main():
                 knn_path=(None if args.skip_recommend else args.knn_path),
                 le_path=(None if args.skip_recommend else args.label_encoder_path),
                 embedding_model_name=args.embedding_model_name,
+                knn_obj=knn_obj, le_obj=le_obj, emb_obj=emb_obj,   # reuse once-loaded objects
             )
 
         # figure output target
