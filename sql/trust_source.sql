@@ -10,7 +10,7 @@ WITH src AS (
   FROM legacy.all_cleaned_comments c
   JOIN legacy.all_comments_fact f
     ON c.comment_unique_key = f.comment_unique_key
-  WHERE f.up_id = 7168 --tanner health
+  WHERE f.up_id = {UP_ID} --7168 tanner health
     AND c.cleaned_comment IS NOT NULL
     --AND CAST(f.posted_date AS date) = :run_date
 ),
@@ -27,5 +27,4 @@ SELECT
   posted_date,
   cleaned_comment
 FROM ranked
-WHERE rn <= 20; -- keep small for smoke test
---LIMIT 20;  -- remove later
+WHERE rn <= 10000; -- keep small for smoke test (used to be 20)

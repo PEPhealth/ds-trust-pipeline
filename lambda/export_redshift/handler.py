@@ -18,6 +18,12 @@ def handler(event, _ctx):
 
     run_id = event.get("run_id") or str(uuid.uuid4())
     run_date = event.get("run_date") or datetime.datetime.now(ZoneInfo("Europe/London")).date().isoformat()
+    
+    #up_id (default allowed; also allow env default)
+    up_id = event.get("up_id") or os.environ.get("DEFAULT_UP_ID", "7168")
+    up_id = int(str(up_id))  # validate numeric; raises if bad
+    if up_id <= 0:
+        raise ValueError("up_id must be a positive integer")
 
     data_bucket     = _get_param(os.environ["PARAM_DATA_BUCKET"])
     sql_template    = _get_param(os.environ["PARAM_SQL"])
@@ -36,6 +42,7 @@ def handler(event, _ctx):
 
     #inject as DATE literal
     sql_inner = sql_template.replace(":run_date", f"DATE '{run_date}'")
+    sql_inner = sql_template.replace("{UP_ID}", str(up_id))
 
     unload = f"""
     UNLOAD ($${sql_inner}$$)
@@ -74,5 +81,6 @@ def handler(event, _ctx):
     return {
         "run_id": run_id,
         "run_date": run_date,
+        "up_id": up_id,
         "s3_prefix": prefix.rsplit("/",1)[0] + "/"
     }

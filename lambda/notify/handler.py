@@ -24,6 +24,7 @@ def handler(event, _ctx):
 
     run_id   = export_payload["run_id"]
     run_date = export_payload["run_date"]
+    up_id = export_payload["up_id"]
     raw_prefix = export_payload["s3_prefix"]
 
     # 👇 NEW: pick up an optional email from the execution input
@@ -50,6 +51,7 @@ def handler(event, _ctx):
     message = {
         "run_id": run_id,
         "run_date": run_date,
+        "up_id": up_id,
         "raw_prefix": raw_prefix,
         "scored_prefix": scored_prefix,
     }
