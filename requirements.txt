@@ -6,3 +6,8 @@ s3fs
 pyarrow==19.0.1
 spacy-transformers
 spacy-experimental
+scikit-learn
+joblib
+tqdm
+emoji
+sentence-transformers
