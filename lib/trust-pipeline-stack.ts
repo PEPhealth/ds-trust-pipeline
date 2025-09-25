@@ -49,7 +49,6 @@ export class TrustPipelineStack extends Stack {
 
     // ---- SNS topic (email) ----
     const topic = new sns.Topic(this, 'NotifyTopic', { });
-    // OPTIONAL: subscribe your email here or do it later in console
     topic.addSubscription(new subs.EmailSubscription('marah.shahin@pephealth.ai'));
 
     // ---- SSM params (config-driven) ----
@@ -83,6 +82,7 @@ export class TrustPipelineStack extends Stack {
       stringValue: 'us-east-2', //changer to var later
     });
     const pTopicArn    = new ssm.StringParameter(this, 'ParamTopicArn',    { parameterName: '/trust_scoring/notify_topic_arn', stringValue: topic.topicArn });
+
     const pWorkgroup   = new ssm.StringParameter(this, 'ParamRsWorkgroup', { parameterName: '/trust_scoring/redshift/workgroup', stringValue: 'mini-pep' });
     const pDatabase = new ssm.StringParameter(this, 'ParamRsDatabase',  { parameterName: '/trust_scoring/redshift/database',  stringValue: 'dev' });
 
@@ -303,10 +303,8 @@ export class TrustPipelineStack extends Stack {
     // Notify: pass what you need explicitly
     const notifyTask = new tasks.LambdaInvoke(this, 'Notify', {
       lambdaFunction: notifyFn,
-      payload: sfn.TaskInput.fromObject({
-        export: sfn.JsonPath.stringAt('$.Export.Payload'),
-        ecs:    sfn.JsonPath.stringAt('$.Ecs'),
-      }),
+      // Pass the entire state (includes run input like "email", plus Export/Ecs)
+      payload: sfn.TaskInput.fromJsonPathAt('$'),
       resultPath: sfn.JsonPath.DISCARD,
     });
 

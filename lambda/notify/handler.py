@@ -7,33 +7,17 @@ def _get_param(name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
 def _first_existing(d: dict, paths):
-    """Return first existing nested value by trying multiple key-paths."""
-    for path in paths:
-        cur = d
-        ok = True
-        for k in path:
-            if isinstance(cur, dict) and k in cur:
-                cur = cur[k]
-            else:
-                ok = False
-                break
-        if ok:
-            return cur
+    ...
     return None
 
 def handler(event, _ctx):
-    # Accept both old and new shapes:
-    # new: {"export": {run_id, run_date, s3_prefix}, "ecs": {...}}
-    # old: {"Export": {"Payload": {run_id, run_date, s3_prefix}}, "Ecs": {...}}
+    # existing tolerant extraction
     export_payload = _first_existing(event, [
         ["export"],
         ["Export", "Payload"],
-        ["Payload"],                 # very defensive
+        ["Payload"],
     ])
-    ecs_payload = _first_existing(event, [
-        ["ecs"],
-        ["Ecs"],
-    ])
+    ecs_payload = _first_existing(event, [["ecs"], ["Ecs"]])
 
     if not export_payload:
         raise KeyError(f"Missing export payload. Got top-level keys: {list(event.keys())}")
@@ -42,13 +26,14 @@ def handler(event, _ctx):
     run_date = export_payload["run_date"]
     raw_prefix = export_payload["s3_prefix"]
 
-    # Resolve config from SSM
+    # 👇 NEW: pick up an optional email from the execution input
+    notify_email = _first_existing(event, [["email"], ["Email"]])
+
     topic_arn   = _get_param(os.environ["PARAM_SNS_TOPIC"])
     data_bucket = _get_param(os.environ["PARAM_DATA_BUCKET"])
-
     scored_prefix = f"s3://{data_bucket}/trust_scoring/scored/run_id={run_id}/"
 
-    # Optional extras from ECS result
+    # (optional) ecs details as before...
     exit_code = None
     stopped_reason = None
     try:
@@ -68,6 +53,8 @@ def handler(event, _ctx):
         "raw_prefix": raw_prefix,
         "scored_prefix": scored_prefix,
     }
+    if notify_email:
+        message["notify_email"] = notify_email  #include in email body
     if exit_code is not None:
         message["ecs_exit_code"] = exit_code
     if stopped_reason:
