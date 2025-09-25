@@ -16,6 +16,40 @@ import spacy
 from datetime import datetime
 from typing import Dict, List, Tuple, Set
 
+def is_s3_prefix(path: str) -> bool:
+    return path.startswith("s3://") and path.endswith("/")
+
+def list_parquet_under(prefix: str) -> List[str]:
+    """List s3://.../*.parquet under a prefix."""
+    if not is_s3_prefix(prefix):
+        return [prefix]
+    fs = s3fs.S3FileSystem()
+    # fs.ls returns keys without scheme; rebuild full URIs
+    entries = fs.ls(prefix)
+    return [f"s3://{p}" for p in entries if p.endswith(".parquet")]
+
+def plan_io(input_arg: str, output_arg: str) -> List[Tuple[str, str]]:
+    """
+    Returns a list of (input_file, output_file).
+    If input is a prefix, output MUST be a prefix too.
+    """
+    inputs = list_parquet_under(input_arg)
+    if len(inputs) == 1 and not is_s3_prefix(input_arg):
+        # single-file mode
+        return [(inputs[0], output_arg)]
+    # prefix mode
+    if not is_s3_prefix(output_arg):
+        raise ValueError("When --input is an S3 prefix, --output must also be an S3 prefix (end with '/').")
+    out_prefix = output_arg.rstrip("/")
+    planned = []
+    for in_uri in inputs:
+        base = os.path.basename(in_uri)
+        base_no_ext = re.sub(r"\.parquet$", "", base, flags=re.IGNORECASE)
+        out_uri = f"{out_prefix}/part_{base_no_ext}.parquet"
+        planned.append((in_uri, out_uri))
+    return planned
+
+
 # ---------- I/O helpers ----------
 
 def read_table(path: str) -> pd.DataFrame:
@@ -213,17 +247,18 @@ def process_table_sequential(df: pd.DataFrame,
 
 # ---------- main ----------
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True, help="Input CSV/Parquet (local or s3://)")
-    parser.add_argument("--output", required=True, help="Output CSV/Parquet (local or s3://)")
+    parser.add_argument("--input", required=True, help="Input file OR s3 prefix (s3://.../)")
+    parser.add_argument("--output", required=True, help="Output file OR s3 prefix (s3://.../)")
     parser.add_argument("--text-col", default="cleaned_comment")
     parser.add_argument("--exclusion-file", default="", help="Optional path to exclude_strings.txt")
     parser.add_argument("--thresholds-json", required=True,
-                        help="JSON file with per-label thresholds, e.g. {\"Gratitude\":0.5,...}")
+                        help='JSON file with per-label thresholds, e.g. {"Gratitude":0.5,...}')
     parser.add_argument("--models-json", required=True,
-                        help=("JSON file mapping labels to S3 buckets/keys, "
-                              "e.g. {\"Gratitude\":{\"bucket\":\"my-b\",\"key\":\"path/model.tar.gz\"}, ...}"))
+                        help=('JSON file mapping labels to S3 buckets/keys, '
+                              '{"Gratitude":{"bucket":"my-b","key":"path/model.tar.gz"}, ...}'))
     args = parser.parse_args()
 
     exclusion = load_exclusion_list(args.exclusion_file)
@@ -233,16 +268,18 @@ def main():
     with open(args.models_json, "r", encoding="utf-8") as f:
         model_map = json.load(f)
 
-    # low-memory path - process models sequentially
-    df = read_table(args.input)
-    out = process_table_sequential(df, args.text_col, model_map, thresholds, exclusion)
+    io_plan = plan_io(args.input, args.output)
+    total_rows = 0
 
-    #original all-in-memory behaviour - swap to:
-    # models = load_models(model_map)
-    # out = process_table(df, args.text_col, models, thresholds, exclusion)
+    for in_path, out_path in io_plan:
+        print(f"[spancat] Reading {in_path}")
+        df = read_table(in_path)
+        out_df = process_table_sequential(df, args.text_col, model_map, thresholds, exclusion)
+        print(f"[spancat] Writing {len(out_df)} rows -> {out_path}")
+        write_table(out_df, out_path)
+        total_rows += len(out_df)
 
-    write_table(out, args.output)
-    print(f"Done. Wrote {len(out)} rows to {args.output}")
+    print(f"Done. Wrote {total_rows} rows across {len(io_plan)} file(s).")
 
 if __name__ == "__main__":
     main()
