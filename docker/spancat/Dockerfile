@@ -22,7 +22,13 @@ RUN pip install --no-cache-dir \
     "boto3" \
     "smart_open" \
     "spacy-transformers" \
-    "spacy-experimental"
+    "spacy-experimental" \
+    "sentence-transformers" \
+    "emoji" \
+    "tqdm" \
+    "joblib" \
+    "scikit-learn"
+
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
