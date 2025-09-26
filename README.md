@@ -9,7 +9,7 @@ It automates the workflow:
 3. **Write results** → saves scored spans back to S3.  
 4. **Notify** → sends an SNS email when the run is complete.
 
----
+High level workflow:
 
 ```nginx
 Redshift → S3 (raw) → ECS Fargate / SpanCat → S3 (scored) → SNS → Email
@@ -17,29 +17,10 @@ Redshift → S3 (raw) → ECS Fargate / SpanCat → S3 (scored) → SNS → Emai
 
 ## 📂 Data Flow
 
-### Input
-- Data source: **Amazon Redshift** (workgroup + database stored in SSM).  
-- SQL: stored in SSM parameter `/trust_scoring/sql` (must include `:run_date` placeholder).
-
-### Raw export
-- **Bucket:** created by this stack (see CloudFormation output `DataBucketName`).  
-- **Prefix:** # 🧩 Trust Pipeline (AWS CDK)
-
-This project defines a reusable AWS Step Functions pipeline for running **spaCy SpanCat trust scoring models** on data from **Amazon Redshift**.  
-
-It automates the workflow:
-
-1. **Export from Redshift** → runs a SQL query and UNLOADs results to S3 (Parquet).  
-2. **Score with SpanCat** → processes exported rows in an ECS Fargate container, applying multiple models.  
-3. **Write results** → saves scored spans back to S3.  
-4. **Notify** → sends an SNS email when the run is complete.
-
----
-
-## 📂 Data Flow
+### archeticture
 
 ```mermaid
-flowchart TD
+flowchart TD;
     A[Redshift] -->|UNLOAD SQL (:run_date)| B[S3 Raw Data<br/>s3://<DataBucketName>/trust_scoring/raw/...]
     B --> C[ECS Fargate Task<br/>SpanCat Scorer]
     C -->|Scored Parquet| D[S3 Scored Data<br/>s3://<DataBucketName>/trust_scoring/scored/...]
@@ -68,8 +49,9 @@ flowchart TD
 
 ### Notification
 - **SNS topic:** created by this stack (see output `NotifyTopicArn`).  
-- **Email:** subscribe in the input field as var "email"  
+- **Email:** subscribe in the input field as var "email" (eg, in json input: "email": "user@pephealth.ai")
 - Email includes run date, run ID, up_id, and the S3 prefix with results.
+- unsure if this feature is currently functional... i have yet to receive an email
 
 ---
 
@@ -132,8 +114,13 @@ In AWS Console → Step Functions → your state machine → Start execution wit
 - run_date replaces :run_date in the SQL query.
 - run_id namespaces the output paths in S3.
 - email is the email that will be notified when run is complete
-- up_id is for the SQL query
-⚠️ the SQL query pulls ALL data from the up_id - ensure that is what you want. if it isn't then clone the repo, edit the query, and push changes to //TO DO
+- up_id is for the SQL query, 7168 (in the example above) is tanner health. Please find the relevat up_id and avoid running the pipeline using the same id
+⚠️ the SQL query pulls ALL data from the up_id - ensure that is what you want. if it isn't then clone the repo, edit the query, and upload changes to SSM using:
+```bash
+aws ssm put-parameter --region us-east-2 \
+  --name /trust_scoring/sql --type String --overwrite \
+  --value "$(< sql/trust_source.sql)"
+```
 
 or via aws cli:
 
@@ -193,6 +180,7 @@ s3://aws-emr-studio-977903982786-us-east-1/ECU-trust-subdomains/*
 - ensure that any new components (e.g. additional validation, fallback handling) follow the existing Step Functions state machine
 - add unit / integration tests under test/ for new logic
 - document new SSM parameters if needed
+- SQL query could be a bit more dynamic and flow around this could be smarter - eg if we're running the script on tanners up_id, it will take all data from there but really we only want to score a comment once so ideally, we should keep a log somewhere and if the same up_id is used then the query updates to only take data that hasnt been scored... and i guess at that point the email should outline what the pipeline did so it may say, "already ran for 5000 comment_unique_key's which can be found in xyz bucket...(?) completed scoring for 200 comment_unique_key's that can be found in "<scored/..>"
 
 
 ## 📚 Useful Commands

@@ -55,7 +55,7 @@ def handler(event, _ctx):
 
     
 
-    # Fail fast if the UNLOAD role is missing
+    # fail fast if the UNLOAD role is missing
     unload_role_arn = os.environ.get("UNLOAD_ROLE_ARN") or _get_param(os.environ["PARAM_UNLOAD_ROLE"])
     if not unload_role_arn or not unload_role_arn.strip():
         raise ValueError("Unload role ARN resolved empty. Check UNLOAD_ROLE_ARN or the SSM param.")

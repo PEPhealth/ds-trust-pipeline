@@ -111,9 +111,7 @@ export class TrustPipelineStack extends Stack {
     }));
     
     // ---- VPC & ECS cluster ----
-    //const vpc = new ec2.Vpc(this, 'Vpc', { maxAzs: 2, natGateways: 0 }); // simple + cheap
-    //const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
-    // Prefer the default VPC (no new IGW/NAT created). If you deleted it, pass -c vpcId=<vpc-xxxx>.
+    // Prefer the default VPC (no new IGW/NAT created)
     const vpcId = this.node.tryGetContext('vpcId') as string | undefined;
 
     const vpc = vpcId
@@ -129,7 +127,7 @@ export class TrustPipelineStack extends Stack {
     //});
     //const scorerImage = ecs.ContainerImage.fromDockerImageAsset(scorerAsset);
 
-    // use the ECR image built by CodeBuild
+    // ECR image built by CodeBuild
     const scorerImage = ecs.ContainerImage.fromRegistry(
       '977903982786.dkr.ecr.us-east-2.amazonaws.com/ds-trust-spancat:latest'
     );
@@ -142,7 +140,7 @@ export class TrustPipelineStack extends Stack {
     dataBucket.grantReadWrite(taskRole);
     taskRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
-      resources: ['*'] // tighten with specific ARNs if you like
+      resources: ['*'] // TODO tighten with specific ARNs
     }));
     // Allow ECS task to read models from the models bucket
     taskRole.addToPolicy(new iam.PolicyStatement({
@@ -158,12 +156,12 @@ export class TrustPipelineStack extends Stack {
         "arn:aws:s3:::aws-emr-studio-977903982786-us-east-1/ECU-trust-subdomains/*"
       ]
     }));
-    // If models live in another bucket, grant read here as well.
+    // FOR TRUST V2: If models live in another bucket, grant read here as well
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 8192,                // 4 v  memoryLimitMiB: 32768,  // 32 GB cpu: 4096 8192,              // 8 vCPU
+      cpu: 8192,                // 4 v  memoryLimitMiB: 32768,  // 32 GB cpu: 4096 8192, now 8 vCPU
       memoryLimitMiB: 32768, // 16 GB RAM 16384 didnt work, upped to 30gb 30720
-      ephemeralStorageGiB: 50, // optional, room for model cache/temp
+      ephemeralStorageGiB: 50, //room for model cache/temp
       taskRole,
     });
     // Allow the execution role to pull from your ECR repo
@@ -177,12 +175,12 @@ export class TrustPipelineStack extends Stack {
         // defaults; Step Functions overrides at run time
         TEXT_COL: 'cleaned_comment',
         AWS_DEFAULT_REGION: Stack.of(this).region,
-        // If your code needs to download the trained models from S3, set this:
+        // loc to download the trained models from S3
         MODELS_S3_PREFIX: 's3://aws-emr-studio-977903982786-us-east-1/ECU-trust-subdomains/',
       },
     });
 
-    // Import your existing secret by name (same region: us-east-2)
+    // Import existing redshift creds secret (same region us-east-2)
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'RedshiftAccessSecret',
@@ -191,7 +189,6 @@ export class TrustPipelineStack extends Stack {
 
 
     // ---- Export Lambda (Redshift Data API + UNLOAD) ----
-        // ---- Export Lambda (Redshift Data API + UNLOAD) ----
     const exportFn = new lambda.Function(this, 'ExportFn', {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'handler.handler',
@@ -205,8 +202,6 @@ export class TrustPipelineStack extends Stack {
         PARAM_RS_DATABASE: pDatabase.parameterName,
         RS_REGION: Stack.of(this).region,
         DB_SECRET_ARN: dbSecret.secretArn,
-        // DB_SECRET_ARN if you use Secrets Manager auth:
-        // DB_SECRET_ARN: 'arn:aws:secretsmanager:us-east-2:977903982786:secret:redshift-access-creds-us-east-2'
       },
     });
 
@@ -223,7 +218,7 @@ export class TrustPipelineStack extends Stack {
     // Permissions for Redshift Data API & SSM
     exportFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['redshift-data:ExecuteStatement','redshift-data:DescribeStatement','redshift-data:GetStatementResult'],
-      resources: ['*'] // you can scope to your workgroup/database
+      resources: ['*'] //TO DO tighten - scope to workgroup/database
     }));
     exportFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter','ssm:GetParameters'],
@@ -301,7 +296,7 @@ export class TrustPipelineStack extends Stack {
 
     // Run task: (see above) resultPath: '$.Ecs'
 
-    // Notify: pass what you need explicitly
+    // Notify: pass explicitly
     const notifyTask = new tasks.LambdaInvoke(this, 'Notify', {
       lambdaFunction: notifyFn,
       // Pass the entire state (includes run input like "email", plus Export/Ecs)

@@ -7,7 +7,7 @@ import pandas as pd
 import s3fs
 import spacy
 
-# ---- extra libs used by your post-processing / recommend step ----
+# ---- added libs used by post-processing / recommend step ----
 from sentence_transformers import SentenceTransformer
 import joblib
 from run_filter_trust import (
@@ -133,7 +133,9 @@ def load_exclusion_list(file_path: str) -> Set[str]:
         return {line.strip().lower() for line in f if line.strip()}
 
 def download_and_extract_model(s3_bucket: str, s3_key: str, local_dir: str) -> str:
-    """Downloads model.tar.gz from S3 and returns path to extracted pipeline dir."""
+    """
+    Downloads model.tar.gz from S3 and returns path to extracted pipeline dir.
+    """
     os.makedirs(local_dir, exist_ok=True)
     local_tar = os.path.join(local_dir, "model.tar.gz")
     boto3.client("s3").download_file(s3_bucket, s3_key, local_tar)
