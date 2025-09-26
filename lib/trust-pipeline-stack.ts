@@ -244,7 +244,21 @@ export class TrustPipelineStack extends Stack {
       actions: ['ssm:GetParameter'], resources: [pTopicArn.parameterArn, pDataBucket.parameterArn]
     }));
     topic.grantPublish(notifyFn);
-   // ------
+   
+    // ------ list inputs lambda ------
+    const listInputsFn = new lambda.Function(this, 'ListInputsFn', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset('lambda/list_inputs'),
+      timeout: Duration.seconds(60),
+      environment: {}
+    });
+
+    // allow listing your export bucket
+    listInputsFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [`arn:aws:s3:::${dataBucket.bucketName}`],
+    }));
 
     // ---- Step Functions: Export -> Run Fargate -> Notify ----
     const runTask = new tasks.EcsRunTask(this, 'RunScorer', {
@@ -281,6 +295,52 @@ export class TrustPipelineStack extends Stack {
       outputPath: '$',          // keep whole context
     });
 
+    const plan = new tasks.LambdaInvoke(this, 'PlanInputs', {
+      lambdaFunction: listInputsFn,
+      payload: sfn.TaskInput.fromObject({
+        s3_prefix: sfn.JsonPath.stringAt('$.Export.Payload.s3_prefix')
+      }),
+      resultPath: '$.Plan',
+      outputPath: '$'
+    });
+
+    // Map over the file list
+    const map = new sfn.Map(this, 'RunBatches', {
+      itemsPath: sfn.JsonPath.stringAt('$.Plan.Payload.keys'),
+      maxConcurrency: 6,   // start with 6, adjust later
+    });
+
+    // One ECS task per file
+    const runOne = new tasks.EcsRunTask(this, 'RunOneFile', {
+      cluster, 
+      taskDefinition: taskDef, 
+      launchTarget: new tasks.EcsFargateLaunchTarget(),
+      integrationPattern: sfn.IntegrationPattern.RUN_JOB,  // sync
+      assignPublicIp: true,
+      containerOverrides: [{
+        containerDefinition: container, // your "spancat" container def
+        environment: [
+          {
+            name: 'INPUT',
+            // this is the s3://bucket/key for the current Map item
+            value: sfn.JsonPath.stringAt('$$.Map.Item.Value')
+          },
+          {
+            name: 'OUTPUT_PREFIX',
+            value: sfn.JsonPath.format(
+              's3://{}/trust_scoring/scored/run_id={}/shard={}/',
+              dataBucket.bucketName,
+              sfn.JsonPath.stringAt('$.Export.Payload.run_id'),
+              sfn.JsonPath.stringAt('$$.Map.Item.Index')
+            )
+          }
+        ]
+      }]
+    });
+
+    // plug iterator
+    map.itemProcessor(runOne);
+
     // Run task: (see above) resultPath: '$.Ecs'
 
     // Notify: pass explicitly
@@ -291,12 +351,18 @@ export class TrustPipelineStack extends Stack {
       resultPath: sfn.JsonPath.DISCARD,
     });
 
-    const definition = exportTask.next(runTask).next(notifyTask);
+    //const definition = exportTask.next(runTask).next(notifyTask);
+    const definition = exportTask
+      .next(plan)
+      .next(map)
+      .next(notifyTask);
 
+    // IMPORTANT: raise overall timeout
     const sm = new sfn.StateMachine(this, 'TrustScoringSm', {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
-      timeout: Duration.hours(4)
+      timeout: Duration.hours(8)   // was 2h; bump so many shards can finish
     });
+
 
     // outputs
     new CfnOutput(this, 'StateMachineArn', { value: sm.stateMachineArn });

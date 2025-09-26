@@ -29,9 +29,16 @@ HELP_OUT="$(python /app/run_spancat_over_table.py --help 2>&1 || true)"
 echo "[spancat] detected help (first lines):"
 echo "$HELP_OUT" | head -n 40
 
-# Input/output flags
-if grep -q -- '--input-prefix' <<<"$HELP_OUT"; then IN_FLAG="--input-prefix"; else IN_FLAG="--input"; fi
-if grep -q -- '--output-prefix' <<<"$HELP_OUT"; then OUT_FLAG="--output-prefix"; else OUT_FLAG="--output"; fi
+# prefer single-file INPUT if provided; otherwise fall back to PREFIX
+if [[ -n "${INPUT:-}" ]]; then
+  IN_FLAG="--input"
+  OUT_FLAG="--output-prefix"
+  argv=( "$IN_FLAG" "$INPUT" "$OUT_FLAG" "$OUTPUT_PREFIX" )
+else
+  if grep -q -- '--input-prefix'  <<<"$HELP_OUT"; then IN_FLAG="--input-prefix"; else IN_FLAG="--input"; fi
+  if grep -q -- '--output-prefix' <<<"$HELP_OUT"; then OUT_FLAG="--output-prefix"; else OUT_FLAG="--output"; fi
+  argv=( "$IN_FLAG" "$INPUT_PREFIX" "$OUT_FLAG" "$OUTPUT_PREFIX" )
+fi
 
 # Text column flag (common variants)
 TEXT_FLAG=""
@@ -56,7 +63,7 @@ elif grep -q -- '--thresholds' <<<"$HELP_OUT"; then
 fi
 
 # Build argv with what we discovered; script defaults will be used if flags not supported
-argv=( "$IN_FLAG" "$INPUT_PREFIX" "$OUT_FLAG" "$OUTPUT_PREFIX" )
+#argv=( "$IN_FLAG" "$INPUT_PREFIX" "$OUT_FLAG" "$OUTPUT_PREFIX" )
 [[ -n "$TEXT_FLAG" ]] && argv+=( "$TEXT_FLAG" "$TEXT_COL" )
 argv+=( "${MODELS_JSON_ARG[@]}" "${THRESHOLDS_JSON_ARG[@]}" )
 
