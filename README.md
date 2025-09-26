@@ -137,8 +137,8 @@ aws stepfunctions start-execution \
   --state-machine-arn "$SM_ARN" \
   --name run-$(date +%F-%H%M%S) \ 
   --input '{
-    "run_id": "manual-010",
-    "run_date": "2025-09-25",
+    "run_id": "manual-001",
+    "run_date": "2025-09-26",
     "email": "marah.shahin@pephealth.ai",
     "up_id": 7168
   }'
