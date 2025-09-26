@@ -66,6 +66,10 @@ def handler(event, _ctx):
         TopicArn=topic_arn,
         Subject=subject,
         Message=json.dumps(message, indent=2),
+        MessageAttributes=(
+            {"notify_email": {"DataType": "String", "StringValue": notify_email}}
+            if notify_email else {}
+        ),
     )
 
     return {"ok": True, "notified_topic": topic_arn, "message": message}
