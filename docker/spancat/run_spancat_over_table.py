@@ -101,8 +101,7 @@ def process_table_sequential(df: pd.DataFrame,
         th = thresholds.get(label, 0.5)
         nlp = spacy.load(model_dir)
         try:
-            for base, text in zip(bases, texts):
-                doc = nlp(text)
+            for doc, base in zip(nlp.pipe(texts, batch_size=32), bases):
                 if "sc" in doc.spans and "scores" in doc.spans["sc"].attrs:
                     for span, score in zip(doc.spans["sc"], doc.spans["sc"].attrs["scores"]):
                         if float(score) >= th and span.text.lower() not in exclusion:
