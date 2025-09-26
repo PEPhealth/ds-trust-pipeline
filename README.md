@@ -127,7 +127,7 @@ In AWS Console → Step Functions → your state machine → Start execution wit
 
 or via cli:
 
-bash ```
+```bash
 SM_ARN=$(aws cloudformation describe-stacks --region us-east-2 \
   --stack-name TrustPipelineStack \
   --query "Stacks[0].Outputs[?OutputKey=='StateMachineArn'].OutputValue" --output text)
