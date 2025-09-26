@@ -10,7 +10,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 //import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 //import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
-//import * as lambdaPython from '@aws-cdk/aws-lambda-python-alpha';
+//import * as lambdaPython from '@aws-cdk/aws-lambda-python-alpha'; //for docker
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -25,18 +25,6 @@ import * as path from 'path';
 export class TrustPipelineStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
-
-    // --- Ensure S3 bucket is co-located with Redshift ---
-    // Pass "-c redshiftRegion=<region>" on deploy, or it defaults to this stack's region.
-    //const redshiftRegion = this.node.tryGetContext('redshiftRegion') ?? Stack.of(this).region;
-
-    // Hard fail if you're deploying the stack to a different region than Redshift.
-    //if (Stack.of(this).region !== redshiftRegion) {
-    //  throw new Error(
-    //    `This stack region (${Stack.of(this).region}) must match your Redshift region (${redshiftRegion}) so the S3 UNLOAD bucket is co-located. ` +
-    //    `Re-run: cdk deploy --region ${redshiftRegion} -c redshiftRegion=${redshiftRegion}`
-    //  );
-    //}
 
     // ---- S3 bucket for data (raw + scored) ----
     const dataBucket = new s3.Bucket(this, 'DataBucket', {
@@ -57,8 +45,9 @@ export class TrustPipelineStack extends Stack {
     //const pSql = ssm.StringParameter.fromStringParameterName(this, 'ParamSql', pSqlName);
     // const pSql         = new ssm.StringParameter(this, 'ParamSql',         { parameterName: '/trust_scoring/sql', stringValue: "$(cat trust_source.sql)"});
     //const pSql = ssm.StringParameter.fromStringParameterName(this, 'ParamSql', pSqlName);
+    
     // Read the SQL file at synth time and store it in SSM
-    const sqlPath = path.join(__dirname, '..', 'sql/trust_source.sql'); // adjust if your file lives elsewhere
+    const sqlPath = path.join(__dirname, '..', 'sql/trust_source.sql');
     const sqlText = fs.readFileSync(sqlPath, 'utf8');
 
     const pSql = new ssm.StringParameter(this, 'ParamSql', {
@@ -73,13 +62,11 @@ export class TrustPipelineStack extends Stack {
     const secretArnWithSuffix =
       `arn:aws:secretsmanager:${Stack.of(this).region}:${Stack.of(this).account}:secret:${secretName}*`;
 
-
-    //const pDataBucket  = new ssm.StringParameter(this, 'ParamDataBucket',  { parameterName: '/trust_scoring/data_bucket', stringValue: 'pephealth-data'}); // dataBucket.bucketName
     const pDataBucket  = new ssm.StringParameter(this, 'ParamDataBucket',  { parameterName: '/trust_scoring/data_bucket', stringValue: dataBucket.bucketName}); // 
 
     const pRsRegion = new ssm.StringParameter(this, 'ParamRsRegion', {
       parameterName: '/trust_scoring/redshift/region',
-      stringValue: 'us-east-2', //changer to var later
+      stringValue: 'us-east-2', //TODO changer to var later
     });
     const pTopicArn    = new ssm.StringParameter(this, 'ParamTopicArn',    { parameterName: '/trust_scoring/notify_topic_arn', stringValue: topic.topicArn });
 
@@ -93,7 +80,7 @@ export class TrustPipelineStack extends Stack {
           new iam.ServicePrincipal('redshift.amazonaws.com'),
           new iam.ServicePrincipal('redshift-serverless.amazonaws.com')
         ),
-        {} // add conditions if you want to restrict
+        {} //todo add conditions later
       ),
       description: 'Role used by Redshift UNLOAD to write to S3',
     });
@@ -156,7 +143,7 @@ export class TrustPipelineStack extends Stack {
         "arn:aws:s3:::aws-emr-studio-977903982786-us-east-1/ECU-trust-subdomains/*"
       ]
     }));
-    // FOR TRUST V2: If models live in another bucket, grant read here as well
+    // FOR TRUST V2: If models live in another bucket, grant read here too
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 8192,                // 4 v  memoryLimitMiB: 32768,  // 32 GB cpu: 4096 8192, now 8 vCPU
@@ -164,7 +151,7 @@ export class TrustPipelineStack extends Stack {
       ephemeralStorageGiB: 50, //room for model cache/temp
       taskRole,
     });
-    // Allow the execution role to pull from your ECR repo
+    // Allow the execution role to pull from ECR repo
     const repo = ecr.Repository.fromRepositoryName(this, 'SpancatRepo', 'ds-trust-spancat');
     repo.grantPull(taskDef.obtainExecutionRole());
 
