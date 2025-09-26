@@ -312,7 +312,7 @@ export class TrustPipelineStack extends Stack {
 
     const sm = new sfn.StateMachine(this, 'TrustScoringSm', {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
-      timeout: Duration.hours(2)
+      timeout: Duration.hours(4)
     });
 
     // outputs
