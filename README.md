@@ -11,6 +11,10 @@ It automates the workflow:
 
 ---
 
+```nginx
+Redshift → S3 (raw) → ECS Fargate / SpanCat → S3 (scored) → SNS → Email
+```
+
 ## 📂 Data Flow
 
 ### Input
@@ -64,8 +68,8 @@ flowchart TD
 
 ### Notification
 - **SNS topic:** created by this stack (see output `NotifyTopicArn`).  
-- **Email:** subscribe in the console or via CDK.  
-- Email includes run date, run ID, and the S3 prefix with results.
+- **Email:** subscribe in the input field as var "email"  
+- Email includes run date, run ID, up_id, and the S3 prefix with results.
 
 ---
 
@@ -88,8 +92,8 @@ Different bucket and naming scheme → no collisions.
 ### Prerequisites
 - Node.js 18+
 - AWS CDK v2 (`npm i -g aws-cdk@2`)
-- Docker (for building the scorer image)
-- AWS CLI configured
+- Docker (for building the SpanCat container)
+- AWS CLI configured with pep creds
 
 ### Deploy
 ```bash
@@ -97,6 +101,7 @@ Different bucket and naming scheme → no collisions.
 cdk bootstrap aws://<ACCOUNT_ID>/<REGION>
 
 # build project
+npm install
 npm run build
 
 # synthesize template
@@ -108,24 +113,29 @@ cdk deploy
 
 ### Outputs
 
-After deploy you’ll see:
-DataBucketName → S3 bucket used for raw + scored data.
-NotifyTopicArn → SNS topic for notifications.
-StateMachineArn → Step Functions ARN for running jobs.
+After deployment you’ll see:
+DataBucketName → S3 bucket used for raw + scored data
+NotifyTopicArn → SNS topic for run completion notifications
+StateMachineArn → Step Functions ARN for running jobs
 
 ## ▶️ Running the Pipeline
 ### Manual run
 In AWS Console → Step Functions → your state machine → Start execution with:
 ```json
 {
-  "run_date": "2025-09-17",
-  "run_id": "manual-001"
+  "run_date": "2025-09-26",
+  "run_id": "manual-001",
+  "email": "user@example.com",
+  "up_id": 7168
 }
 ```
 - run_date replaces :run_date in the SQL query.
 - run_id namespaces the output paths in S3.
+- email is the email that will be notified when run is complete
+- up_id is for the SQL query
+⚠️ the SQL query pulls ALL data from the up_id - ensure that is what you want. if it isn't then clone the repo, edit the query, and push changes to //TO DO
 
-or via cli:
+or via aws cli:
 
 ```bash
 SM_ARN=$(aws cloudformation describe-stacks --region us-east-2 --stack-name TrustPipelineStack \
@@ -138,18 +148,20 @@ aws stepfunctions start-execution \
   --input '{"run_date":"2025-09-26","run_id":"manual-001", "email": "marah.shahin@pephealth.ai", "up_id": 7168}'
   ```
 
-### Scheduled run
-Add an EventBridge rule to trigger the state machine on a cron (e.g., daily).
+### Scheduled / cron run
+(not implemented) can add an EventBridge (CloudWatch Events) rule to trigger the state machine on a cron (e.g., daily).
 
-## ⚙️ Configuration
+## ⚙️ Configuration & Parameters
+
+The stack relies on a number of SSM parameters and JSON configuration files:
 
 ### SSM Parameters
-- /trust_scoring/sql → Redshift query (with :run_date).
-- /trust_scoring/data_bucket → data bucket name.
-- /trust_scoring/notify_topic_arn → SNS topic ARN.
-- /trust_scoring/redshift/workgroup → Redshift workgroup.
-- /trust_scoring/redshift/database → Redshift database.
-- /trust_scoring/redshift/unload_role_arn → IAM role for UNLOAD to S3.
+- /trust_scoring/sql → Redshift query (with :run_date)
+- /trust_scoring/data_bucket → data bucket name for raw/scored data
+- /trust_scoring/notify_topic_arn → SNS topic ARN
+- /trust_scoring/redshift/workgroup → Redshift workgroup
+- /trust_scoring/redshift/database → Redshift database
+- /trust_scoring/redshift/unload_role_arn → IAM role for UNLOAD to S3
 
 ### Models & Thresholds
 - Defined in docker/spancat/models.json and thresholds.json.
@@ -157,28 +169,30 @@ Add an EventBridge rule to trigger the state machine on a cron (e.g., daily).
 
 
 ## 🔐 IAM & Permissions
-- Redshift UNLOAD role → can write to data bucket.
-- ECS task role → can read raw data, write scored data, and read models bucket.
-- Export Lambda → can call Redshift Data API + read SSM.
-- Notify Lambda → can read SSM + publish to SNS.
+- The Redshift UNLOAD IAM role must be allowed to write to the data bucket
+- ECS Task Role must read raw data, read models bucket, and write scored output
+- Lambda functions (export, notify) must have permission to read SSM, call Redshift Data API, publish to SNS, etc.
+- Ensure that the ECS task role has S3 read permissions to the models bucket (for example, s3://aws-emr-studio-***/ECU-trust-subdomains/*)
+- You may restrict access (via bucket policies, VPC endpoints) to ensure data is not publicly accessible
 
 ⚠️ Make sure to grant the ECS task role read access to the models bucket:
 s3://aws-emr-studio-977903982786-us-east-1/ECU-trust-subdomains/*
 
 
-## 📊 Observability
-- CloudWatch Logs → all Lambdas and ECS tasks.
-- Step Functions → visual execution history.
-- SNS email → run completion notification.
-Optional: add metrics for rows processed and spans generated.
+## Observability & Monitoring
+- CloudWatch Logs for all Lambda functions and ECS containers
+- Step Functions UI & execution history for visual tracing
+- SNS / email notifications as basic alerting
+- You may extend with custom metrics (e.g. number of rows processed, number of spans scored)
+- Add alarms on failures, high latencies, or missing runs
 
 
-## 🚀 Next Steps
-1. Subscribe your email to the SNS topic.
-2. Update /trust_scoring/sql in SSM with your actual query.
-3. Add S3 read permissions for the ECS task role on the models bucket.
-4. Test a run with a recent run_date.
-5. Verify raw + scored files in S3 and check the notification email.
+## Contributing / Extending
+- add new SpanCat models by updating models.json and configuring corresponding thresholds
+- migrate part of logic (SQL, pre-/post-processing) from the legacy scripts repo or ECU-Trust
+- ensure that any new components (e.g. additional validation, fallback handling) follow the existing Step Functions state machine
+- add unit / integration tests under test/ for new logic
+- document new SSM parameters if needed
 
 
 ## 📚 Useful Commands
@@ -192,10 +206,15 @@ npm run build && cdk synth
 # destroy the stack (removes resources but keeps S3 bucket if RETAIN)
 cdk destroy
 ```
+## Acknowledgements & References
+This project is heavily inspired by / ported from:
+
+- [PEPhealth/scripts](https://github.com/PEPhealth/scripts/tree/feature/EN-483-Move-ECU-ETL-to-Github) — branch feature/EN-483-Move-ECU-ETL-to-Github, mostly ecu_elt_trust & ecu_etl_script
+- [PEPhealth/ECU-Trust](https://github.com/PEPhealth/ECU-Trust)
 
 ## Summary
 This pipeline gives you:
 - A repeatable, safe workflow for Redshift → SpanCat → S3 → Notification.
 - Config-driven setup (SSM params).
-- Clean separation from your original SQS-driven script.
+- Clean separation from the original SQS-driven script.
 - Fully managed AWS services (serverless, no EC2).
