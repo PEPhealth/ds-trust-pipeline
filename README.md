@@ -128,20 +128,14 @@ In AWS Console → Step Functions → your state machine → Start execution wit
 or via cli:
 
 ```bash
-SM_ARN=$(aws cloudformation describe-stacks --region us-east-2 \
-  --stack-name TrustPipelineStack \
+SM_ARN=$(aws cloudformation describe-stacks --region us-east-2 --stack-name TrustPipelineStack \
   --query "Stacks[0].Outputs[?OutputKey=='StateMachineArn'].OutputValue" --output text)
 
 aws stepfunctions start-execution \
   --region us-east-2 \
   --state-machine-arn "$SM_ARN" \
-  --name run-$(date +%F-%H%M%S) \ 
-  --input '{
-    "run_id": "manual-001",
-    "run_date": "2025-09-26",
-    "email": "marah.shahin@pephealth.ai",
-    "up_id": 7168
-  }'
+  --name run-2025-09-24-01 \
+  --input '{"run_date":"2025-09-26","run_id":"manual-001", "email": "marah.shahin@pephealth.ai", "up_id": 7168}'
   ```
 
 ### Scheduled run
