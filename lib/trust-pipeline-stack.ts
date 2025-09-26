@@ -271,6 +271,7 @@ export class TrustPipelineStack extends Stack {
       taskDefinition: taskDef,
       launchTarget: new tasks.EcsFargateLaunchTarget(),
       assignPublicIp: true,
+      taskTimeout: sfn.Timeout.duration(Duration.hours(4)),
       containerOverrides: [{
         containerDefinition: container,
         environment: [
