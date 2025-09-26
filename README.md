@@ -125,6 +125,25 @@ In AWS Console → Step Functions → your state machine → Start execution wit
 - run_date replaces :run_date in the SQL query.
 - run_id namespaces the output paths in S3.
 
+or via cli:
+
+bash ```
+SM_ARN=$(aws cloudformation describe-stacks --region us-east-2 \
+  --stack-name TrustPipelineStack \
+  --query "Stacks[0].Outputs[?OutputKey=='StateMachineArn'].OutputValue" --output text)
+
+aws stepfunctions start-execution \
+  --region us-east-2 \
+  --state-machine-arn "$SM_ARN" \
+  --name run-$(date +%F-%H%M%S) \ 
+  --input '{
+    "run_id": "manual-010",
+    "run_date": "2025-09-25",
+    "email": "marah.shahin@pephealth.ai",
+    "up_id": 7168
+  }'
+  ```
+
 ### Scheduled run
 Add an EventBridge rule to trigger the state machine on a cron (e.g., daily).
 
