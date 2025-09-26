@@ -27,14 +27,14 @@ def handler(event, _ctx):
     up_id = export_payload["up_id"]
     raw_prefix = export_payload["s3_prefix"]
 
-    # 👇 NEW: pick up an optional email from the execution input
+    # pick up an optional email from the execution input
     notify_email = _first_existing(event, [["email"], ["Email"]])
 
     topic_arn   = _get_param(os.environ["PARAM_SNS_TOPIC"])
     data_bucket = _get_param(os.environ["PARAM_DATA_BUCKET"])
     scored_prefix = f"s3://{data_bucket}/trust_scoring/scored/run_id={run_id}/"
 
-    # (optional) ecs details as before...
+    # ecs details
     exit_code = None
     stopped_reason = None
     try:
